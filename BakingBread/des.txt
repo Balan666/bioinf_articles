@@ -1,0 +1,1366 @@
+
+R version 4.1.2 (2021-11-01) -- "Bird Hippie"
+Copyright (C) 2021 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ## ----setup, echo=FALSE, results="hide"----------------------------------------
+> knitr::opts_chunk$set(tidy = FALSE,
++                       cache = FALSE,
++                       dev = "png",
++                       message = FALSE, error = FALSE, warning = TRUE)
+> 
+> ## ----quickStart, eval=FALSE---------------------------------------------------
+> #  dds <- DESeqDataSetFromMatrix(countData = cts,
+> #                                colData = coldata,
+> #                                design= ~ batch + condition)
+> #  dds <- DESeq(dds)
+> #  resultsNames(dds) # lists the coefficients
+> #  res <- results(dds, name="condition_trt_vs_untrt")
+> #  # or to shrink log fold changes association with condition:
+> #  res <- lfcShrink(dds, coef="condition_trt_vs_untrt", type="apeglm")
+> 
+> ## ----txiSetup-----------------------------------------------------------------
+> library("tximport")
+> library("readr")
+> library("tximportData")
+> dir <- system.file("extdata", package="tximportData")
+> samples <- read.table(file.path(dir,"samples.txt"), header=TRUE)
+> samples$condition <- factor(rep(c("A","B"),each=3))
+> rownames(samples) <- samples$run
+> samples[,c("pop","center","run","condition")]
+          pop center       run condition
+ERR188297 TSI  UNIGE ERR188297         A
+ERR188088 TSI  UNIGE ERR188088         A
+ERR188329 TSI  UNIGE ERR188329         A
+ERR188288 TSI  UNIGE ERR188288         B
+ERR188021 TSI  UNIGE ERR188021         B
+ERR188356 TSI  UNIGE ERR188356         B
+> 
+> ## ----txiFiles-----------------------------------------------------------------
+> files <- file.path(dir,"salmon", samples$run, "quant.sf.gz")
+> names(files) <- samples$run
+> tx2gene <- read_csv(file.path(dir, "tx2gene.gencode.v27.csv"))
+> 
+> ## ----tximport, results="hide"-------------------------------------------------
+> txi <- tximport(files, type="salmon", tx2gene=tx2gene)
+> 
+> ## ----txi2dds, results="hide"--------------------------------------------------
+> library("DESeq2")
+> ddsTxi <- DESeqDataSetFromTximport(txi,
++                                    colData = samples,
++                                    design = ~ condition)
+> 
+> ## -----------------------------------------------------------------------------
+> coldata <- samples
+> coldata$files <- files
+> coldata$names <- coldata$run
+> 
+> ## ----echo=FALSE---------------------------------------------------------------
+> library("tximeta")
+> se <- tximeta(coldata, skipMeta=TRUE)
+> ddsTxi2 <- DESeqDataSet(se, design = ~condition)
+> 
+> ## ----eval=FALSE---------------------------------------------------------------
+> #  library("tximeta")
+> #  se <- tximeta(coldata)
+> #  ddsTxi <- DESeqDataSet(se, design = ~ condition)
+> 
+> ## ----loadPasilla--------------------------------------------------------------
+> library("pasilla")
+> pasCts <- system.file("extdata",
++                       "pasilla_gene_counts.tsv",
++                       package="pasilla", mustWork=TRUE)
+> pasAnno <- system.file("extdata",
++                        "pasilla_sample_annotation.csv",
++                        package="pasilla", mustWork=TRUE)
+> cts <- as.matrix(read.csv(pasCts,sep="\t",row.names="gene_id"))
+> coldata <- read.csv(pasAnno, row.names=1)
+> coldata <- coldata[,c("condition","type")]
+> coldata$condition <- factor(coldata$condition)
+> coldata$type <- factor(coldata$type)
+> 
+> ## ----showPasilla--------------------------------------------------------------
+> head(cts,2)
+            untreated1 untreated2 untreated3 untreated4 treated1 treated2
+FBgn0000003          0          0          0          0        0        0
+FBgn0000008         92        161         76         70      140       88
+            treated3
+FBgn0000003        1
+FBgn0000008       70
+> coldata
+             condition        type
+treated1fb     treated single-read
+treated2fb     treated  paired-end
+treated3fb     treated  paired-end
+untreated1fb untreated single-read
+untreated2fb untreated single-read
+untreated3fb untreated  paired-end
+untreated4fb untreated  paired-end
+> 
+> ## ----reorderPasila------------------------------------------------------------
+> rownames(coldata) <- sub("fb", "", rownames(coldata))
+> all(rownames(coldata) %in% colnames(cts))
+[1] TRUE
+> all(rownames(coldata) == colnames(cts))
+[1] FALSE
+> cts <- cts[, rownames(coldata)]
+> all(rownames(coldata) == colnames(cts))
+[1] TRUE
+> 
+> ## ----matrixInput--------------------------------------------------------------
+> library("DESeq2")
+> dds <- DESeqDataSetFromMatrix(countData = cts,
++                               colData = coldata,
++                               design = ~ condition)
+> dds
+class: DESeqDataSet 
+dim: 14599 7 
+metadata(1): version
+assays(1): counts
+rownames(14599): FBgn0000003 FBgn0000008 ... FBgn0261574 FBgn0261575
+rowData names(0):
+colnames(7): treated1 treated2 ... untreated3 untreated4
+colData names(2): condition type
+> 
+> ## ----addFeatureData-----------------------------------------------------------
+> featureData <- data.frame(gene=rownames(cts))
+> mcols(dds) <- DataFrame(mcols(dds), featureData)
+> mcols(dds)
+DataFrame with 14599 rows and 1 column
+                   gene
+            <character>
+FBgn0000003 FBgn0000003
+FBgn0000008 FBgn0000008
+FBgn0000014 FBgn0000014
+FBgn0000015 FBgn0000015
+FBgn0000017 FBgn0000017
+...                 ...
+FBgn0261571 FBgn0261571
+FBgn0261572 FBgn0261572
+FBgn0261573 FBgn0261573
+FBgn0261574 FBgn0261574
+FBgn0261575 FBgn0261575
+> 
+> ## ----htseqDirI, eval=FALSE----------------------------------------------------
+> #  directory <- "/path/to/your/files/"
+> 
+> ## ----htseqDirII---------------------------------------------------------------
+> directory <- system.file("extdata", package="pasilla",
++                          mustWork=TRUE)
+> 
+> ## ----htseqInput---------------------------------------------------------------
+> sampleFiles <- grep("treated",list.files(directory),value=TRUE)
+> sampleCondition <- sub("(.*treated).*","\\1",sampleFiles)
+> sampleTable <- data.frame(sampleName = sampleFiles,
++                           fileName = sampleFiles,
++                           condition = sampleCondition)
+> sampleTable$condition <- factor(sampleTable$condition)
+> 
+> ## ----hsteqDds-----------------------------------------------------------------
+> library("DESeq2")
+> ddsHTSeq <- DESeqDataSetFromHTSeqCount(sampleTable = sampleTable,
++                                        directory = directory,
++                                        design= ~ condition)
+> ddsHTSeq
+class: DESeqDataSet 
+dim: 70463 7 
+metadata(1): version
+assays(1): counts
+rownames(70463): FBgn0000003:001 FBgn0000008:001 ... FBgn0261575:001
+  FBgn0261575:002
+rowData names(0):
+colnames(7): treated1fb.txt treated2fb.txt ... untreated3fb.txt
+  untreated4fb.txt
+colData names(1): condition
+> 
+> ## ----loadSumExp---------------------------------------------------------------
+> library("airway")
+> data("airway")
+> se <- airway
+> 
+> ## ----sumExpInput--------------------------------------------------------------
+> library("DESeq2")
+> ddsSE <- DESeqDataSet(se, design = ~ cell + dex)
+> ddsSE
+class: DESeqDataSet 
+dim: 64102 8 
+metadata(2): '' version
+assays(1): counts
+rownames(64102): ENSG00000000003 ENSG00000000005 ... LRG_98 LRG_99
+rowData names(0):
+colnames(8): SRR1039508 SRR1039509 ... SRR1039520 SRR1039521
+colData names(9): SampleName cell ... Sample BioSample
+> 
+> ## ----prefilter----------------------------------------------------------------
+> keep <- rowSums(counts(dds)) >= 10
+> dds <- dds[keep,]
+> 
+> ## ----eval=FALSE---------------------------------------------------------------
+> #  # unevaluated chunk...
+> #  keep <- rowSums(counts(dds) >= 10) >= X
+> #  dds <- dds[keep,]
+> 
+> ## ----factorlvl----------------------------------------------------------------
+> dds$condition <- factor(dds$condition, levels = c("untreated","treated"))
+> 
+> ## ----relevel------------------------------------------------------------------
+> dds$condition <- relevel(dds$condition, ref = "untreated")
+> 
+> ## ----droplevels---------------------------------------------------------------
+> dds$condition <- droplevels(dds$condition)
+> 
+> ## ----deseq--------------------------------------------------------------------
+> dds <- DESeq(dds)
+> res <- results(dds)
+> res
+log2 fold change (MLE): condition treated vs untreated 
+Wald test p-value: condition treated vs untreated 
+DataFrame with 9921 rows and 6 columns
+              baseMean log2FoldChange     lfcSE       stat    pvalue      padj
+             <numeric>      <numeric> <numeric>  <numeric> <numeric> <numeric>
+FBgn0000008   95.14429     0.00227644  0.223729   0.010175 0.9918817  0.997211
+FBgn0000014    1.05652    -0.49512039  2.143186  -0.231021 0.8172987        NA
+FBgn0000017 4352.55357    -0.23991894  0.126337  -1.899041 0.0575591  0.288002
+FBgn0000018  418.61048    -0.10467391  0.148489  -0.704927 0.4808558  0.826834
+FBgn0000024    6.40620     0.21084779  0.689588   0.305759 0.7597879  0.943501
+...                ...            ...       ...        ...       ...       ...
+FBgn0261570 3208.38861      0.2955329  0.127350  2.3206264  0.020307  0.144240
+FBgn0261572    6.19719     -0.9588230  0.775315 -1.2366888  0.216203  0.607848
+FBgn0261573 2240.97951      0.0127194  0.113300  0.1122634  0.910615  0.982657
+FBgn0261574 4857.68037      0.0153924  0.192567  0.0799327  0.936291  0.988179
+FBgn0261575   10.68252      0.1635705  0.930911  0.1757102  0.860522  0.967928
+> 
+> ## ----eval=FALSE---------------------------------------------------------------
+> #  res <- results(dds, name="condition_treated_vs_untreated")
+> #  res <- results(dds, contrast=c("condition","treated","untreated"))
+> 
+> ## ----lfcShrink----------------------------------------------------------------
+> resultsNames(dds)
+[1] "Intercept"                      "condition_treated_vs_untreated"
+> resLFC <- lfcShrink(dds, coef="condition_treated_vs_untreated", type="apeglm")
+> resLFC
+log2 fold change (MAP): condition treated vs untreated 
+Wald test p-value: condition treated vs untreated 
+DataFrame with 9921 rows and 5 columns
+              baseMean log2FoldChange     lfcSE    pvalue      padj
+             <numeric>      <numeric> <numeric> <numeric> <numeric>
+FBgn0000008   95.14429     0.00117785  0.151896 0.9918817  0.997211
+FBgn0000014    1.05652    -0.00472053  0.205467 0.8172987        NA
+FBgn0000017 4352.55357    -0.19018294  0.120382 0.0575591  0.288002
+FBgn0000018  418.61048    -0.07001006  0.123898 0.4808558  0.826834
+FBgn0000024    6.40620     0.01752520  0.198633 0.7597879  0.943501
+...                ...            ...       ...       ...       ...
+FBgn0261570 3208.38861     0.23521340 0.1240667  0.020307  0.144240
+FBgn0261572    6.19719    -0.06575858 0.2141337  0.216203  0.607848
+FBgn0261573 2240.97951     0.00975870 0.0993753  0.910615  0.982657
+FBgn0261574 4857.68037     0.01017595 0.1408931  0.936291  0.988179
+FBgn0261575   10.68252     0.00809101 0.2014704  0.860522  0.967928
+> 
+> ## ----parallel, eval=FALSE-----------------------------------------------------
+> #  library("BiocParallel")
+> #  register(MulticoreParam(4))
+> 
+> ## ----resOrder-----------------------------------------------------------------
+> resOrdered <- res[order(res$pvalue),]
+> 
+> ## ----sumRes-------------------------------------------------------------------
+> summary(res)
+
+out of 9921 with nonzero total read count
+adjusted p-value < 0.1
+LFC > 0 (up)       : 518, 5.2%
+LFC < 0 (down)     : 536, 5.4%
+outliers [1]       : 1, 0.01%
+low counts [2]     : 1539, 16%
+(mean count < 6)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+> 
+> ## ----sumRes01-----------------------------------------------------------------
+> sum(res$padj < 0.1, na.rm=TRUE)
+[1] 1054
+> 
+> ## ----resAlpha05---------------------------------------------------------------
+> res05 <- results(dds, alpha=0.05)
+> summary(res05)
+
+out of 9921 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 407, 4.1%
+LFC < 0 (down)     : 431, 4.3%
+outliers [1]       : 1, 0.01%
+low counts [2]     : 1347, 14%
+(mean count < 5)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+> sum(res05$padj < 0.05, na.rm=TRUE)
+[1] 838
+> 
+> ## ----IHW, eval=FALSE----------------------------------------------------------
+> #  # (unevaluated code chunk)
+> #  library("IHW")
+> #  resIHW <- results(dds, filterFun=ihw)
+> #  summary(resIHW)
+> #  sum(resIHW$padj < 0.1, na.rm=TRUE)
+> #  metadata(resIHW)$ihwResult
+> 
+> ## ----MA-----------------------------------------------------------------------
+> plotMA(res, ylim=c(-2,2))
+> 
+> ## ----shrunkMA-----------------------------------------------------------------
+> plotMA(resLFC, ylim=c(-2,2))
+> 
+> ## ----MAidentify, eval=FALSE---------------------------------------------------
+> #  idx <- identify(res$baseMean, res$log2FoldChange)
+> #  rownames(res)[idx]
+> 
+> ## ----warning=FALSE------------------------------------------------------------
+> resultsNames(dds)
+[1] "Intercept"                      "condition_treated_vs_untreated"
+> # because we are interested in treated vs untreated, we set 'coef=2'
+> resNorm <- lfcShrink(dds, coef=2, type="normal")
+> resAsh <- lfcShrink(dds, coef=2, type="ashr")
+> 
+> ## ----fig.width=8, fig.height=3------------------------------------------------
+> par(mfrow=c(1,3), mar=c(4,4,2,1))
+> xlim <- c(1,1e5); ylim <- c(-3,3)
+> plotMA(resLFC, xlim=xlim, ylim=ylim, main="apeglm")
+> plotMA(resNorm, xlim=xlim, ylim=ylim, main="normal")
+> plotMA(resAsh, xlim=xlim, ylim=ylim, main="ashr")
+> 
+> ## ----plotCounts---------------------------------------------------------------
+> plotCounts(dds, gene=which.min(res$padj), intgroup="condition")
+> 
+> ## ----plotCountsAdv------------------------------------------------------------
+> d <- plotCounts(dds, gene=which.min(res$padj), intgroup="condition", 
++                 returnData=TRUE)
+> library("ggplot2")
+> ggplot(d, aes(x=condition, y=count)) + 
++   geom_point(position=position_jitter(w=0.1,h=0)) + 
++   scale_y_log10(breaks=c(25,100,400))
+> 
+> ## ----metadata-----------------------------------------------------------------
+> mcols(res)$description
+[1] "mean of normalized counts for all samples"             
+[2] "log2 fold change (MLE): condition treated vs untreated"
+[3] "standard error: condition treated vs untreated"        
+[4] "Wald statistic: condition treated vs untreated"        
+[5] "Wald test p-value: condition treated vs untreated"     
+[6] "BH adjusted p-values"                                  
+> 
+> ## ----export, eval=FALSE-------------------------------------------------------
+> #  write.csv(as.data.frame(resOrdered),
+> #            file="condition_treated_results.csv")
+> 
+> ## ----subset-------------------------------------------------------------------
+> resSig <- subset(resOrdered, padj < 0.1)
+> resSig
+log2 fold change (MLE): condition treated vs untreated 
+Wald test p-value: condition treated vs untreated 
+DataFrame with 1054 rows and 6 columns
+             baseMean log2FoldChange     lfcSE      stat       pvalue
+            <numeric>      <numeric> <numeric> <numeric>    <numeric>
+FBgn0039155   730.568       -4.61874 0.1691240  -27.3098 3.24447e-164
+FBgn0025111  1501.448        2.89995 0.1273576   22.7701 9.07164e-115
+FBgn0029167  3706.024       -2.19691 0.0979154  -22.4368 1.72030e-111
+FBgn0003360  4342.832       -3.17954 0.1435677  -22.1466 1.12417e-108
+FBgn0035085   638.219       -2.56024 0.1378126  -18.5777  4.86845e-77
+...               ...            ...       ...       ...          ...
+FBgn0037073  973.1016      -0.252146 0.1009872  -2.49681    0.0125316
+FBgn0029976 2312.5885      -0.221127 0.0885764  -2.49645    0.0125443
+FBgn0030938   24.8064       0.957645 0.3836454   2.49617    0.0125542
+FBgn0039260 1088.2766      -0.259253 0.1038739  -2.49585    0.0125656
+FBgn0034753 7775.2711       0.393515 0.1576749   2.49574    0.0125696
+                    padj
+               <numeric>
+FBgn0039155 2.71919e-160
+FBgn0025111 3.80147e-111
+FBgn0029167 4.80595e-108
+FBgn0003360 2.35542e-105
+FBgn0035085  8.16049e-74
+...                  ...
+FBgn0037073    0.0999489
+FBgn0029976    0.0999489
+FBgn0030938    0.0999489
+FBgn0039260    0.0999489
+FBgn0034753    0.0999489
+> 
+> ## ----multifactor--------------------------------------------------------------
+> colData(dds)
+DataFrame with 7 rows and 3 columns
+           condition        type sizeFactor
+            <factor>    <factor>  <numeric>
+treated1   treated   single-read   1.635501
+treated2   treated   paired-end    0.761216
+treated3   treated   paired-end    0.832660
+untreated1 untreated single-read   1.138338
+untreated2 untreated single-read   1.793541
+untreated3 untreated paired-end    0.649483
+untreated4 untreated paired-end    0.751600
+> 
+> ## ----copyMultifactor----------------------------------------------------------
+> ddsMF <- dds
+> 
+> ## ----fixLevels----------------------------------------------------------------
+> levels(ddsMF$type)
+[1] "paired-end"  "single-read"
+> levels(ddsMF$type) <- sub("-.*", "", levels(ddsMF$type))
+> levels(ddsMF$type)
+[1] "paired" "single"
+> 
+> ## ----replaceDesign------------------------------------------------------------
+> design(ddsMF) <- formula(~ type + condition)
+> ddsMF <- DESeq(ddsMF)
+> 
+> ## ----multiResults-------------------------------------------------------------
+> resMF <- results(ddsMF)
+> head(resMF)
+log2 fold change (MLE): condition treated vs untreated 
+Wald test p-value: condition treated vs untreated 
+DataFrame with 6 rows and 6 columns
+              baseMean log2FoldChange     lfcSE       stat    pvalue      padj
+             <numeric>      <numeric> <numeric>  <numeric> <numeric> <numeric>
+FBgn0000008   95.14429     -0.0405571  0.220040 -0.1843169 0.8537648  0.949444
+FBgn0000014    1.05652     -0.0835022  2.075676 -0.0402289 0.9679106        NA
+FBgn0000017 4352.55357     -0.2560570  0.112230 -2.2815471 0.0225161  0.130353
+FBgn0000018  418.61048     -0.0646152  0.131349 -0.4919341 0.6227659  0.859351
+FBgn0000024    6.40620      0.3089562  0.755886  0.4087340 0.6827349  0.887742
+FBgn0000032  989.72022     -0.0483792  0.120853 -0.4003139 0.6889253  0.890201
+> 
+> ## ----multiTypeResults---------------------------------------------------------
+> resMFType <- results(ddsMF,
++                      contrast=c("type", "single", "paired"))
+> head(resMFType)
+log2 fold change (MLE): type single vs paired 
+Wald test p-value: type single vs paired 
+DataFrame with 6 rows and 6 columns
+              baseMean log2FoldChange     lfcSE      stat    pvalue      padj
+             <numeric>      <numeric> <numeric> <numeric> <numeric> <numeric>
+FBgn0000008   95.14429      -0.262373  0.218505 -1.200767 0.2298414  0.536182
+FBgn0000014    1.05652       3.289885  2.052786  1.602644 0.1090133        NA
+FBgn0000017 4352.55357      -0.100020  0.112091 -0.892310 0.3722268  0.683195
+FBgn0000018  418.61048       0.229049  0.130261  1.758388 0.0786815  0.291789
+FBgn0000024    6.40620       0.306051  0.751286  0.407369 0.6837368  0.880472
+FBgn0000032  989.72022       0.237413  0.120286  1.973744 0.0484108  0.217658
+> 
+> ## ----rlogAndVST---------------------------------------------------------------
+> vsd <- vst(dds, blind=FALSE)
+> rld <- rlog(dds, blind=FALSE)
+> head(assay(vsd), 3)
+             treated1  treated2  treated3 untreated1 untreated2 untreated3
+FBgn0000008  7.607917  7.834912  7.595052   7.567298   7.642174   7.844603
+FBgn0000014  6.318818  6.041221  6.041221   6.412782   6.173921   6.041221
+FBgn0000017 11.938311 12.024557 12.013565  12.045721  12.284647  12.455939
+            untreated4
+FBgn0000008   7.669147
+FBgn0000014   6.041221
+FBgn0000017  12.077404
+> 
+> ## ----meansd-------------------------------------------------------------------
+> # this gives log2(n + 1)
+> ntd <- normTransform(dds)
+> library("vsn")
+> meanSdPlot(assay(ntd))
+> meanSdPlot(assay(vsd))
+> meanSdPlot(assay(rld))
+> 
+> ## ----heatmap------------------------------------------------------------------
+> library("pheatmap")
+> select <- order(rowMeans(counts(dds,normalized=TRUE)),
++                 decreasing=TRUE)[1:20]
+> df <- as.data.frame(colData(dds)[,c("condition","type")])
+> pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
++          cluster_cols=FALSE, annotation_col=df)
+> pheatmap(assay(vsd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
++          cluster_cols=FALSE, annotation_col=df)
+> pheatmap(assay(rld)[select,], cluster_rows=FALSE, show_rownames=FALSE,
++          cluster_cols=FALSE, annotation_col=df)
+> 
+> ## ----sampleClust--------------------------------------------------------------
+> sampleDists <- dist(t(assay(vsd)))
+> 
+> ## ----figHeatmapSamples, fig.height=4, fig.width=6-----------------------------
+> library("RColorBrewer")
+> sampleDistMatrix <- as.matrix(sampleDists)
+> rownames(sampleDistMatrix) <- paste(vsd$condition, vsd$type, sep="-")
+> colnames(sampleDistMatrix) <- NULL
+> colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+> pheatmap(sampleDistMatrix,
++          clustering_distance_rows=sampleDists,
++          clustering_distance_cols=sampleDists,
++          col=colors)
+> 
+> ## ----figPCA-------------------------------------------------------------------
+> plotPCA(vsd, intgroup=c("condition", "type"))
+> 
+> ## ----figPCA2------------------------------------------------------------------
+> pcaData <- plotPCA(vsd, intgroup=c("condition", "type"), returnData=TRUE)
+> percentVar <- round(100 * attr(pcaData, "percentVar"))
+> ggplot(pcaData, aes(PC1, PC2, color=condition, shape=type)) +
++   geom_point(size=3) +
++   xlab(paste0("PC1: ",percentVar[1],"% variance")) +
++   ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
++   coord_fixed()
+> 
+> ## ----WaldTest, eval=FALSE-----------------------------------------------------
+> #  dds <- estimateSizeFactors(dds)
+> #  dds <- estimateDispersions(dds)
+> #  dds <- nbinomWaldTest(dds)
+> 
+> ## ----eval=FALSE---------------------------------------------------------------
+> #  dds <- estimateSizeFactors(dds, controlGenes=ctrlGenes)
+> #  dds <- DESeq(dds)
+> 
+> ## ----simpleContrast, eval=FALSE-----------------------------------------------
+> #  results(dds, contrast=c("condition","C","B"))
+> 
+> ## ----combineFactors, eval=FALSE-----------------------------------------------
+> #  dds$group <- factor(paste0(dds$genotype, dds$condition))
+> #  design(dds) <- ~ group
+> #  dds <- DESeq(dds)
+> #  resultsNames(dds)
+> #  results(dds, contrast=c("group", "IB", "IA"))
+> 
+> ## ----interFig, echo=FALSE, results="hide", fig.height=3-----------------------
+> npg <- 20
+> mu <- 2^c(8,10,9,11,10,12)
+> cond <- rep(rep(c("A","B"),each=npg),3)
+> geno <- rep(c("I","II","III"),each=2*npg)
+> table(cond, geno)
+    geno
+cond  I II III
+   A 20 20  20
+   B 20 20  20
+> counts <- rnbinom(6*npg, mu=rep(mu,each=npg), size=1/.01)
+> d <- data.frame(log2c=log2(counts+1), cond, geno)
+> library("ggplot2")
+> plotit <- function(d, title) {
++   ggplot(d, aes(x=cond, y=log2c, group=geno)) + 
++     geom_jitter(size=1.5, position = position_jitter(width=.15)) +
++     facet_wrap(~ geno) + 
++     stat_summary(fun.y=mean, geom="line", colour="red", size=0.8) + 
++     xlab("condition") + ylab("log2(counts+1)") + ggtitle(title)
++ }
+> plotit(d, "Gene 1") + ylim(7,13)
+> lm(log2c ~ cond + geno + geno:cond, data=d)
+
+Call:
+lm(formula = log2c ~ cond + geno + geno:cond, data = d)
+
+Coefficients:
+  (Intercept)          condB         genoII        genoIII   condB:genoII  
+      8.01267        2.01820        0.96662        1.97916        0.02492  
+condB:genoIII  
+      0.05346  
+
+> 
+> ## ----interFig2, echo=FALSE, results="hide", fig.height=3----------------------
+> mu[4] <- 2^12
+> mu[6] <- 2^8
+> counts <- rnbinom(6*npg, mu=rep(mu,each=npg), size=1/.01)
+> d2 <- data.frame(log2c=log2(counts + 1), cond, geno)
+> plotit(d2, "Gene 2") + ylim(7,13)
+> lm(log2c ~ cond + geno + geno:cond, data=d2)
+
+Call:
+lm(formula = log2c ~ cond + geno + geno:cond, data = d2)
+
+Coefficients:
+  (Intercept)          condB         genoII        genoIII   condB:genoII  
+       8.0221         1.9817         1.0018         1.9964         0.9612  
+condB:genoIII  
+      -4.0478  
+
+> 
+> ## ----simpleLRT, eval=FALSE----------------------------------------------------
+> #  dds <- DESeq(dds, test="LRT", reduced=~1)
+> #  res <- results(dds)
+> 
+> ## ----simpleLRT2, eval=FALSE---------------------------------------------------
+> #  dds <- DESeq(dds, test="LRT", reduced=~batch)
+> #  res <- results(dds)
+> 
+> ## ----apeThresh----------------------------------------------------------------
+> resApeT <- lfcShrink(dds, coef=2, type="apeglm", lfcThreshold=1)
+> plotMA(resApeT, ylim=c(-3,3), cex=.8)
+> abline(h=c(-1,1), col="dodgerblue", lwd=2)
+> 
+> ## ----ashThresh----------------------------------------------------------------
+> resAshT <- lfcShrink(dds, coef=2, type="ashr", lfcThreshold=1)
+> plotMA(resAshT, ylim=c(-3,3), cex=.8)
+> abline(h=c(-1,1), col="dodgerblue", lwd=2)
+> 
+> ## -----------------------------------------------------------------------------
+> condition <- factor(rep(c("A","B","C"),each=2))
+> model.matrix(~ condition)
+  (Intercept) conditionB conditionC
+1           1          0          0
+2           1          0          0
+3           1          1          0
+4           1          1          0
+5           1          0          1
+6           1          0          1
+attr(,"assign")
+[1] 0 1 1
+attr(,"contrasts")
+attr(,"contrasts")$condition
+[1] "contr.treatment"
+
+> # to compare C vs B, make B the reference level,
+> # and select the last coefficient
+> condition <- relevel(condition, "B")
+> model.matrix(~ condition)
+  (Intercept) conditionA conditionC
+1           1          1          0
+2           1          1          0
+3           1          0          0
+4           1          0          0
+5           1          0          1
+6           1          0          1
+attr(,"assign")
+[1] 0 1 1
+attr(,"contrasts")
+attr(,"contrasts")$condition
+[1] "contr.treatment"
+
+> 
+> ## -----------------------------------------------------------------------------
+> grp <- factor(rep(1:3,each=4))
+> cnd <- factor(rep(rep(c("A","B"),each=2),3))
+> model.matrix(~ grp + cnd + grp:cnd)
+   (Intercept) grp2 grp3 cndB grp2:cndB grp3:cndB
+1            1    0    0    0         0         0
+2            1    0    0    0         0         0
+3            1    0    0    1         0         0
+4            1    0    0    1         0         0
+5            1    1    0    0         0         0
+6            1    1    0    0         0         0
+7            1    1    0    1         1         0
+8            1    1    0    1         1         0
+9            1    0    1    0         0         0
+10           1    0    1    0         0         0
+11           1    0    1    1         0         1
+12           1    0    1    1         0         1
+attr(,"assign")
+[1] 0 1 1 2 3 3
+attr(,"contrasts")
+attr(,"contrasts")$grp
+[1] "contr.treatment"
+
+attr(,"contrasts")$cnd
+[1] "contr.treatment"
+
+> # to compare condition effect in group 3 vs 2,
+> # make group 2 the reference level,
+> # and select the last coefficient
+> grp <- relevel(grp, "2")
+> model.matrix(~ grp + cnd + grp:cnd)
+   (Intercept) grp1 grp3 cndB grp1:cndB grp3:cndB
+1            1    1    0    0         0         0
+2            1    1    0    0         0         0
+3            1    1    0    1         1         0
+4            1    1    0    1         1         0
+5            1    0    0    0         0         0
+6            1    0    0    0         0         0
+7            1    0    0    1         0         0
+8            1    0    0    1         0         0
+9            1    0    1    0         0         0
+10           1    0    1    0         0         0
+11           1    0    1    1         0         1
+12           1    0    1    1         0         1
+attr(,"assign")
+[1] 0 1 1 2 3 3
+attr(,"contrasts")
+attr(,"contrasts")$grp
+[1] "contr.treatment"
+
+attr(,"contrasts")$cnd
+[1] "contr.treatment"
+
+> 
+> ## -----------------------------------------------------------------------------
+> grp <- factor(rep(1:2,each=4))
+> ind <- factor(rep(rep(1:2,each=2),2))
+> cnd <- factor(rep(c("A","B"),4))
+> model.matrix(~grp + grp:ind + grp:cnd)
+  (Intercept) grp2 grp1:ind2 grp2:ind2 grp1:cndB grp2:cndB
+1           1    0         0         0         0         0
+2           1    0         0         0         1         0
+3           1    0         1         0         0         0
+4           1    0         1         0         1         0
+5           1    1         0         0         0         0
+6           1    1         0         0         0         1
+7           1    1         0         1         0         0
+8           1    1         0         1         0         1
+attr(,"assign")
+[1] 0 1 2 2 3 3
+attr(,"contrasts")
+attr(,"contrasts")$grp
+[1] "contr.treatment"
+
+attr(,"contrasts")$ind
+[1] "contr.treatment"
+
+attr(,"contrasts")$cnd
+[1] "contr.treatment"
+
+> # to compare condition effect across group,
+> # add a main effect for 'cnd',
+> # and select the last coefficient
+> model.matrix(~grp + cnd + grp:ind + grp:cnd)
+  (Intercept) grp2 cndB grp1:ind2 grp2:ind2 grp2:cndB
+1           1    0    0         0         0         0
+2           1    0    1         0         0         0
+3           1    0    0         1         0         0
+4           1    0    1         1         0         0
+5           1    1    0         0         0         0
+6           1    1    1         0         0         1
+7           1    1    0         0         1         0
+8           1    1    1         0         1         1
+attr(,"assign")
+[1] 0 1 2 3 3 4
+attr(,"contrasts")
+attr(,"contrasts")$grp
+[1] "contr.treatment"
+
+attr(,"contrasts")$cnd
+[1] "contr.treatment"
+
+attr(,"contrasts")$ind
+[1] "contr.treatment"
+
+> 
+> ## ----boxplotCooks-------------------------------------------------------------
+> par(mar=c(8,5,2,2))
+> boxplot(log10(assays(dds)[["cooks"]]), range=0, las=2)
+> 
+> ## ----dispFit------------------------------------------------------------------
+> plotDispEsts(dds)
+> 
+> ## ----dispFitCustom------------------------------------------------------------
+> ddsCustom <- dds
+> useForMedian <- mcols(ddsCustom)$dispGeneEst > 1e-7
+> medianDisp <- median(mcols(ddsCustom)$dispGeneEst[useForMedian],
++                      na.rm=TRUE)
+> dispersionFunction(ddsCustom) <- function(mu) medianDisp
+> ddsCustom <- estimateDispersionsMAP(ddsCustom)
+> 
+> ## ----filtByMean---------------------------------------------------------------
+> metadata(res)$alpha
+[1] 0.1
+> metadata(res)$filterThreshold
+15.5102% 
+6.150425 
+> plot(metadata(res)$filterNumRej, 
++      type="b", ylab="number of rejections",
++      xlab="quantiles of filter")
+> lines(metadata(res)$lo.fit, col="red")
+> abline(v=metadata(res)$filterTheta)
+> 
+> ## ----noFilt-------------------------------------------------------------------
+> resNoFilt <- results(dds, independentFiltering=FALSE)
+> addmargins(table(filtering=(res$padj < .1),
++                  noFiltering=(resNoFilt$padj < .1)))
+         noFiltering
+filtering FALSE TRUE  Sum
+    FALSE  7327    0 7327
+    TRUE     74  980 1054
+    Sum    7401  980 8381
+> 
+> ## ----lfcThresh----------------------------------------------------------------
+> par(mfrow=c(2,2),mar=c(2,2,1,1))
+> ylim <- c(-2.5,2.5)
+> resGA <- results(dds, lfcThreshold=.5, altHypothesis="greaterAbs")
+> resLA <- results(dds, lfcThreshold=.5, altHypothesis="lessAbs")
+> resG <- results(dds, lfcThreshold=.5, altHypothesis="greater")
+> resL <- results(dds, lfcThreshold=.5, altHypothesis="less")
+> drawLines <- function() abline(h=c(-.5,.5),col="dodgerblue",lwd=2)
+> plotMA(resGA, ylim=ylim); drawLines()
+> plotMA(resLA, ylim=ylim); drawLines()
+> plotMA(resG, ylim=ylim); drawLines()
+> plotMA(resL, ylim=ylim); drawLines()
+> 
+> ## ----mcols--------------------------------------------------------------------
+> mcols(dds,use.names=TRUE)[1:4,1:4]
+DataFrame with 4 rows and 4 columns
+                   gene   baseMean     baseVar   allZero
+            <character>  <numeric>   <numeric> <logical>
+FBgn0000008 FBgn0000008   95.14429 2.24821e+02     FALSE
+FBgn0000014 FBgn0000014    1.05652 2.96195e+00     FALSE
+FBgn0000017 FBgn0000017 4352.55357 3.61538e+05     FALSE
+FBgn0000018 FBgn0000018  418.61048 2.34903e+03     FALSE
+> substr(names(mcols(dds)),1,10) 
+ [1] "gene"       "baseMean"   "baseVar"    "allZero"    "dispGeneEs"
+ [6] "dispGeneIt" "dispFit"    "dispersion" "dispIter"   "dispOutlie"
+[11] "dispMAP"    "Intercept"  "condition_" "SE_Interce" "SE_conditi"
+[16] "WaldStatis" "WaldStatis" "WaldPvalue" "WaldPvalue" "betaConv"  
+[21] "betaIter"   "deviance"   "maxCooks"  
+> mcols(mcols(dds), use.names=TRUE)[1:4,]
+DataFrame with 4 rows and 2 columns
+                 type            description
+          <character>            <character>
+gene                                        
+baseMean intermediate mean of normalized c..
+baseVar  intermediate variance of normaliz..
+allZero  intermediate all counts for a gen..
+> 
+> ## ----muAndCooks---------------------------------------------------------------
+> head(assays(dds)[["mu"]])
+               treated1     treated2     treated3  untreated1 untreated2
+FBgn0000008  154.396031   71.8609656   78.6055308  107.292909  169.04844
+FBgn0000014    1.501799    0.6989863    0.7645902    1.473255    2.32123
+FBgn0000017 6450.259576 3002.1618883 3283.9320611 5301.761091 8353.34276
+FBgn0000018  658.349152  306.4172395  335.1762611  492.704389  776.29463
+FBgn0000024   11.449737    5.3290821    5.8292471    6.885637   10.84886
+FBgn0000032 1561.830518  726.9270333  795.1533193 1158.470636 1825.26186
+              untreated3   untreated4
+FBgn0000008   61.2163741   70.8413759
+FBgn0000014    0.8405713    0.9727337
+FBgn0000017 3024.9398082 3500.5486848
+FBgn0000018  281.1143492  325.3137345
+FBgn0000024    3.9286264    4.5463212
+FBgn0000032  660.9697956  764.8935501
+> head(assays(dds)[["cooks"]])
+              treated1    treated2   treated3 untreated1   untreated2
+FBgn0000008 0.08830682 0.303871673 0.07781037 0.09824096 0.0137763819
+FBgn0000014 1.88673267 0.218247357 0.25186420 1.88310711 0.1847612922
+FBgn0000017 0.01372829 0.004978868 0.00214944 0.08044192 0.0104725934
+FBgn0000018 0.09518425 0.004710899 0.05477262 0.18460854 0.0023367864
+FBgn0000024 0.06631485 0.131131503 0.03122751 0.27064844 0.0004706499
+FBgn0000032 0.07377786 0.015891435 0.02053258 0.34090627 0.0217426835
+            untreated3   untreated4
+FBgn0000008 0.18921860 0.0005147278
+FBgn0000014 0.15347908 0.1887775324
+FBgn0000017 0.17278834 0.0549333604
+FBgn0000018 0.07634164 0.0108036698
+FBgn0000024 0.03100290 0.0813890443
+FBgn0000032 0.02482481 0.0774936263
+> 
+> ## ----dispersions--------------------------------------------------------------
+> head(dispersions(dds))
+[1] 0.03035149 2.80597670 0.01289648 0.01565261 0.23769578 0.01691026
+> head(mcols(dds)$dispersion)
+[1] 0.03035149 2.80597670 0.01289648 0.01565261 0.23769578 0.01691026
+> 
+> ## ----sizefactors--------------------------------------------------------------
+> sizeFactors(dds)
+  treated1   treated2   treated3 untreated1 untreated2 untreated3 untreated4 
+ 1.6355014  0.7612159  0.8326603  1.1383376  1.7935406  0.6494828  0.7516005 
+> 
+> ## ----coef---------------------------------------------------------------------
+> head(coef(dds))
+             Intercept condition_treated_vs_untreated
+FBgn0000008  6.5584825                    0.002276441
+FBgn0000014  0.3720789                   -0.495120386
+FBgn0000017 12.1853275                   -0.239918944
+FBgn0000018  8.7576501                   -0.104673912
+FBgn0000024  2.5966618                    0.210847792
+FBgn0000032  9.9910773                   -0.091788071
+> 
+> ## ----betaPriorVar-------------------------------------------------------------
+> attr(dds, "betaPriorVar")
+[1] 1e+06 1e+06
+> 
+> ## ----priorInfo----------------------------------------------------------------
+> priorInfo(resLFC)
+$type
+[1] "apeglm"
+
+$package
+[1] "apeglm"
+
+$version
+[1] '1.16.0'
+
+$prior.control
+$prior.control$no.shrink
+[1] 1
+
+$prior.control$prior.mean
+[1] 0
+
+$prior.control$prior.scale
+[1] 0.2022794
+
+$prior.control$prior.df
+[1] 1
+
+$prior.control$prior.no.shrink.mean
+[1] 0
+
+$prior.control$prior.no.shrink.scale
+[1] 15
+
+$prior.control$prior.var
+[1] 0.04091696
+
+
+> priorInfo(resNorm)
+$type
+[1] "normal"
+
+$package
+[1] "DESeq2"
+
+$version
+[1] '1.34.0'
+
+$betaPriorVar
+       Intercept conditiontreated 
+    1.000000e+06     1.094938e-01 
+
+> priorInfo(resAsh)
+$type
+[1] "ashr"
+
+$package
+[1] "ashr"
+
+$version
+[1] '2.2.54'
+
+$fitted_g
+$pi
+ [1] 0.000000000 0.000000000 0.000000000 0.000000000 0.000000000 0.000000000
+ [7] 0.060095575 0.525606403 0.000000000 0.000000000 0.208941039 0.000000000
+[13] 0.093885921 0.076126858 0.000000000 0.018921723 0.013360326 0.003062155
+[19] 0.000000000 0.000000000 0.000000000 0.000000000 0.000000000
+
+$mean
+ [1] 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+$sd
+ [1]  0.005779228  0.008173063  0.011558456  0.016346125  0.023116912
+ [6]  0.032692251  0.046233824  0.065384502  0.092467649  0.130769003
+[11]  0.184935298  0.261538006  0.369870596  0.523076013  0.739741191
+[16]  1.046152026  1.479482383  2.092304051  2.958964766  4.184608102
+[21]  5.917929531  8.369216205 11.835859063
+
+attr(,"class")
+[1] "normalmix"
+attr(,"row.names")
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+
+> 
+> ## ----dispPriorVar-------------------------------------------------------------
+> dispersionFunction(dds)
+function (q) 
+coefs[1] + coefs[2]/q
+<bytecode: 0x55ac42f15e88>
+<environment: 0x55ac42f164e0>
+attr(,"coefficients")
+asymptDisp  extraPois 
+ 0.0140677  2.6554158 
+attr(,"fitType")
+[1] "parametric"
+attr(,"varLogDispEsts")
+[1] 0.974183
+attr(,"dispPriorVar")
+[1] 0.4838252
+> attr(dispersionFunction(dds), "dispPriorVar")
+[1] 0.4838252
+> 
+> ## ----versionNum---------------------------------------------------------------
+> metadata(dds)[["version"]]
+[1] '1.34.0'
+> 
+> ## ----normFactors, eval=FALSE--------------------------------------------------
+> #  normFactors <- normFactors / exp(rowMeans(log(normFactors)))
+> #  normalizationFactors(dds) <- normFactors
+> 
+> ## ----offsetTransform, eval=FALSE----------------------------------------------
+> #  cqnOffset <- cqnObject$glm.offset
+> #  cqnNormFactors <- exp(cqnOffset)
+> #  EDASeqNormFactors <- exp(-1 * EDASeqOffset)
+> 
+> ## ----lineardep, echo=FALSE----------------------------------------------------
+> DataFrame(batch=factor(c(1,1,2,2)), condition=factor(c("A","A","B","B")))
+DataFrame with 4 rows and 2 columns
+     batch condition
+  <factor>  <factor>
+1        1         A
+2        1         A
+3        2         B
+4        2         B
+> 
+> ## ----lineardep2, echo=FALSE---------------------------------------------------
+> DataFrame(batch=factor(c(1,1,1,1,2,2)), condition=factor(c("A","A","B","B","C","C")))
+DataFrame with 6 rows and 2 columns
+     batch condition
+  <factor>  <factor>
+1        1         A
+2        1         A
+3        1         B
+4        1         B
+5        2         C
+6        2         C
+> 
+> ## ----lineardep3, echo=FALSE---------------------------------------------------
+> DataFrame(batch=factor(c(1,1,1,2,2,2)), condition=factor(c("A","B","C","A","B","C")))
+DataFrame with 6 rows and 2 columns
+     batch condition
+  <factor>  <factor>
+1        1         A
+2        1         B
+3        1         C
+4        2         A
+5        2         B
+6        2         C
+> 
+> ## ----groupeffect--------------------------------------------------------------
+> coldata <- DataFrame(grp=factor(rep(c("X","Y"),each=6)),
++                        ind=factor(rep(1:6,each=2)),
++                       cnd=factor(rep(c("A","B"),6)))
+> coldata
+DataFrame with 12 rows and 3 columns
+         grp      ind      cnd
+    <factor> <factor> <factor>
+1          X        1        A
+2          X        1        B
+3          X        2        A
+4          X        2        B
+5          X        3        A
+...      ...      ...      ...
+8          Y        4        B
+9          Y        5        A
+10         Y        5        B
+11         Y        6        A
+12         Y        6        B
+> 
+> ## -----------------------------------------------------------------------------
+> as.data.frame(coldata)
+   grp ind cnd
+1    X   1   A
+2    X   1   B
+3    X   2   A
+4    X   2   B
+5    X   3   A
+6    X   3   B
+7    Y   4   A
+8    Y   4   B
+9    Y   5   A
+10   Y   5   B
+11   Y   6   A
+12   Y   6   B
+> 
+> ## ----groupeffect2-------------------------------------------------------------
+> coldata$ind.n <- factor(rep(rep(1:3,each=2),2))
+> as.data.frame(coldata)
+   grp ind cnd ind.n
+1    X   1   A     1
+2    X   1   B     1
+3    X   2   A     2
+4    X   2   B     2
+5    X   3   A     3
+6    X   3   B     3
+7    Y   4   A     1
+8    Y   4   B     1
+9    Y   5   A     2
+10   Y   5   B     2
+11   Y   6   A     3
+12   Y   6   B     3
+> 
+> ## ----groupeffect3-------------------------------------------------------------
+> model.matrix(~ grp + grp:ind.n + grp:cnd, coldata)
+   (Intercept) grpY grpX:ind.n2 grpY:ind.n2 grpX:ind.n3 grpY:ind.n3 grpX:cndB
+1            1    0           0           0           0           0         0
+2            1    0           0           0           0           0         1
+3            1    0           1           0           0           0         0
+4            1    0           1           0           0           0         1
+5            1    0           0           0           1           0         0
+6            1    0           0           0           1           0         1
+7            1    1           0           0           0           0         0
+8            1    1           0           0           0           0         0
+9            1    1           0           1           0           0         0
+10           1    1           0           1           0           0         0
+11           1    1           0           0           0           1         0
+12           1    1           0           0           0           1         0
+   grpY:cndB
+1          0
+2          0
+3          0
+4          0
+5          0
+6          0
+7          0
+8          1
+9          0
+10         1
+11         0
+12         1
+attr(,"assign")
+[1] 0 1 2 2 2 2 3 3
+attr(,"contrasts")
+attr(,"contrasts")$grp
+[1] "contr.treatment"
+
+attr(,"contrasts")$ind.n
+[1] "contr.treatment"
+
+attr(,"contrasts")$cnd
+[1] "contr.treatment"
+
+> 
+> ## ----groupeffect4, eval=FALSE-------------------------------------------------
+> #  results(dds, contrast=list("grpY.cndB","grpX.cndB"))
+> 
+> ## ----missingcombo-------------------------------------------------------------
+> group <- factor(rep(1:3,each=6))
+> condition <- factor(rep(rep(c("A","B","C"),each=2),3))
+> d <- DataFrame(group, condition)[-c(17,18),]
+> as.data.frame(d)
+   group condition
+1      1         A
+2      1         A
+3      1         B
+4      1         B
+5      1         C
+6      1         C
+7      2         A
+8      2         A
+9      2         B
+10     2         B
+11     2         C
+12     2         C
+13     3         A
+14     3         A
+15     3         B
+16     3         B
+> 
+> ## ----missingcombo2------------------------------------------------------------
+> m1 <- model.matrix(~ condition*group, d)
+> colnames(m1)
+[1] "(Intercept)"       "conditionB"        "conditionC"       
+[4] "group2"            "group3"            "conditionB:group2"
+[7] "conditionC:group2" "conditionB:group3" "conditionC:group3"
+> unname(m1)
+      [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9]
+ [1,]    1    0    0    0    0    0    0    0    0
+ [2,]    1    0    0    0    0    0    0    0    0
+ [3,]    1    1    0    0    0    0    0    0    0
+ [4,]    1    1    0    0    0    0    0    0    0
+ [5,]    1    0    1    0    0    0    0    0    0
+ [6,]    1    0    1    0    0    0    0    0    0
+ [7,]    1    0    0    1    0    0    0    0    0
+ [8,]    1    0    0    1    0    0    0    0    0
+ [9,]    1    1    0    1    0    1    0    0    0
+[10,]    1    1    0    1    0    1    0    0    0
+[11,]    1    0    1    1    0    0    1    0    0
+[12,]    1    0    1    1    0    0    1    0    0
+[13,]    1    0    0    0    1    0    0    0    0
+[14,]    1    0    0    0    1    0    0    0    0
+[15,]    1    1    0    0    1    0    0    1    0
+[16,]    1    1    0    0    1    0    0    1    0
+attr(,"assign")
+[1] 0 1 1 2 2 3 3 3 3
+attr(,"contrasts")
+attr(,"contrasts")$condition
+[1] "contr.treatment"
+
+attr(,"contrasts")$group
+[1] "contr.treatment"
+
+> all.zero <- apply(m1, 2, function(x) all(x==0))
+> all.zero
+      (Intercept)        conditionB        conditionC            group2 
+            FALSE             FALSE             FALSE             FALSE 
+           group3 conditionB:group2 conditionC:group2 conditionB:group3 
+            FALSE             FALSE             FALSE             FALSE 
+conditionC:group3 
+             TRUE 
+> 
+> ## ----missingcombo3------------------------------------------------------------
+> idx <- which(all.zero)
+> m1 <- m1[,-idx]
+> unname(m1)
+      [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8]
+ [1,]    1    0    0    0    0    0    0    0
+ [2,]    1    0    0    0    0    0    0    0
+ [3,]    1    1    0    0    0    0    0    0
+ [4,]    1    1    0    0    0    0    0    0
+ [5,]    1    0    1    0    0    0    0    0
+ [6,]    1    0    1    0    0    0    0    0
+ [7,]    1    0    0    1    0    0    0    0
+ [8,]    1    0    0    1    0    0    0    0
+ [9,]    1    1    0    1    0    1    0    0
+[10,]    1    1    0    1    0    1    0    0
+[11,]    1    0    1    1    0    0    1    0
+[12,]    1    0    1    1    0    0    1    0
+[13,]    1    0    0    0    1    0    0    0
+[14,]    1    0    0    0    1    0    0    0
+[15,]    1    1    0    0    1    0    0    1
+[16,]    1    1    0    0    1    0    0    1
+> 
+> ## ----cooksPlot----------------------------------------------------------------
+> W <- res$stat
+> maxCooks <- apply(assays(dds)[["cooks"]],1,max)
+> idx <- !is.na(W)
+> plot(rank(W[idx]), maxCooks[idx], xlab="rank of Wald statistic", 
++      ylab="maximum Cook's distance per gene",
++      ylim=c(0,5), cex=.4, col=rgb(0,0,0,.3))
+> m <- ncol(dds)
+> p <- 3
+> abline(h=qf(.99, p, m - p))
+> 
+> ## ----indFilt------------------------------------------------------------------
+> plot(res$baseMean+1, -log10(res$pvalue),
++      log="x", xlab="mean of normalized counts",
++      ylab=expression(-log[10](pvalue)),
++      ylim=c(0,30),
++      cex=.4, col=rgb(0,0,0,.3))
+> 
+> ## ----histindepfilt------------------------------------------------------------
+> use <- res$baseMean > metadata(res)$filterThreshold
+> h1 <- hist(res$pvalue[!use], breaks=0:50/50, plot=FALSE)
+> h2 <- hist(res$pvalue[use], breaks=0:50/50, plot=FALSE)
+> colori <- c(`do not pass`="khaki", `pass`="powderblue")
+> 
+> ## ----fighistindepfilt---------------------------------------------------------
+> barplot(height = rbind(h1$counts, h2$counts), beside = FALSE,
++         col = colori, space = 0, main = "", ylab="frequency")
+> text(x = c(0, length(h1$counts)), y = 0, label = paste(c(0,1)),
++      adj = c(0.5,1.7), xpd=NA)
+> legend("topright", fill=rev(colori), legend=rev(names(colori)))
+> 
+> ## ----vanillaDESeq, eval=FALSE-------------------------------------------------
+> #  dds <- DESeq(dds, minReplicatesForReplace=Inf)
+> #  res <- results(dds, cooksCutoff=FALSE, independentFiltering=FALSE)
+> 
+> ## ---- eval=FALSE--------------------------------------------------------------
+> #  mat <- assay(vsd)
+> #  mm <- model.matrix(~condition, colData(vsd))
+> #  mat <- limma::removeBatchEffect(mat, batch=vsd$batch, design=mm)
+> #  assay(vsd) <- mat
+> #  plotPCA(vsd)
+> 
+> ## ----varGroup, echo=FALSE-----------------------------------------------------
+> set.seed(3)
+> dds1 <- makeExampleDESeqDataSet(n=1000,m=12,betaSD=.3,dispMeanRel=function(x) 0.01)
+> dds2 <- makeExampleDESeqDataSet(n=1000,m=12,
++                                 betaSD=.3,
++                                 interceptMean=mcols(dds1)$trueIntercept,
++                                 interceptSD=0,
++                                 dispMeanRel=function(x) 0.2)
+> dds2 <- dds2[,7:12]
+> dds2$condition <- rep("C",6)
+> mcols(dds2) <- NULL
+> dds12 <- cbind(dds1, dds2)
+> rld <- rlog(dds12, blind=FALSE, fitType="mean")
+> plotPCA(rld)
+> 
+> ## ----convertNA, eval=FALSE----------------------------------------------------
+> #  res$padj <- ifelse(is.na(res$padj), 1, res$padj)
+> 
+> ## ----sessionInfo--------------------------------------------------------------
+> sessionInfo()
+R version 4.1.2 (2021-11-01)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: Linux Mint 21
+
+Matrix products: default
+BLAS:   /usr/lib/x86_64-linux-gnu/blas/libblas.so.3.10.0
+LAPACK: /usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.10.0
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=ru_RU.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=ru_RU.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=ru_RU.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats4    stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+ [1] RColorBrewer_1.1-3          pheatmap_1.0.12            
+ [3] vsn_3.62.0                  ggplot2_3.4.0              
+ [5] airway_1.14.0               pasilla_1.22.0             
+ [7] tximeta_1.12.4              DESeq2_1.34.0              
+ [9] SummarizedExperiment_1.24.0 Biobase_2.54.0             
+[11] MatrixGenerics_1.6.0        matrixStats_0.63.0         
+[13] GenomicRanges_1.46.1        GenomeInfoDb_1.30.1        
+[15] IRanges_2.28.0              S4Vectors_0.32.4           
+[17] BiocGenerics_0.40.0         tximportData_1.22.0        
+[19] readr_2.1.3                 tximport_1.22.0            
+
+loaded via a namespace (and not attached):
+  [1] AnnotationHub_3.2.2           BiocFileCache_2.2.1          
+  [3] plyr_1.8.6                    lazyeval_0.2.2               
+  [5] splines_4.1.2                 BiocParallel_1.28.3          
+  [7] digest_0.6.31                 invgamma_1.1                 
+  [9] ensembldb_2.18.4              htmltools_0.5.4              
+ [11] SQUAREM_2021.1                fansi_1.0.4                  
+ [13] magrittr_2.0.3                memoise_2.0.1                
+ [15] tzdb_0.3.0                    limma_3.50.3                 
+ [17] Biostrings_2.62.0             annotate_1.72.0              
+ [19] vroom_1.6.1                   bdsmatrix_1.3-6              
+ [21] prettyunits_1.1.1             colorspace_2.1-0             
+ [23] blob_1.2.3                    rappdirs_0.3.3               
+ [25] apeglm_1.16.0                 xfun_0.37                    
+ [27] dplyr_1.1.0                   crayon_1.5.2                 
+ [29] RCurl_1.98-1.10               jsonlite_1.8.4               
+ [31] hexbin_1.28.2                 genefilter_1.76.0            
+ [33] survival_3.5-3                glue_1.6.2                   
+ [35] gtable_0.3.1                  zlibbioc_1.40.0              
+ [37] XVector_0.34.0                DelayedArray_0.20.0          
+ [39] scales_1.2.1                  mvtnorm_1.1-3                
+ [41] DBI_1.1.3                     Rcpp_1.0.10                  
+ [43] xtable_1.8-4                  progress_1.2.2               
+ [45] emdbook_1.3.12                bit_4.0.5                    
+ [47] preprocessCore_1.56.0         truncnorm_1.0-8              
+ [49] httr_1.4.4                    ellipsis_0.3.2               
+ [51] pkgconfig_2.0.3               XML_3.99-0.13                
+ [53] farver_2.1.1                  dbplyr_2.3.0                 
+ [55] locfit_1.5-9.7                utf8_1.2.3                   
+ [57] tidyselect_1.2.0              labeling_0.4.2               
+ [59] rlang_1.0.6                   later_1.3.0                  
+ [61] AnnotationDbi_1.56.2          munsell_0.5.0                
+ [63] BiocVersion_3.14.0            tools_4.1.2                  
+ [65] cachem_1.0.6                  cli_3.6.0                    
+ [67] generics_0.1.3                RSQLite_2.2.20               
+ [69] stringr_1.5.0                 fastmap_1.1.0                
+ [71] yaml_2.3.7                    knitr_1.42                   
+ [73] bit64_4.0.5                   KEGGREST_1.34.0              
+ [75] AnnotationFilter_1.18.0       mime_0.12                    
+ [77] xml2_1.3.3                    biomaRt_2.50.3               
+ [79] compiler_4.1.2                filelock_1.0.2               
+ [81] curl_5.0.0                    png_0.1-8                    
+ [83] interactiveDisplayBase_1.32.0 affyio_1.64.0                
+ [85] tibble_3.1.8                  geneplotter_1.72.0           
+ [87] stringi_1.7.12                GenomicFeatures_1.46.5       
+ [89] lattice_0.20-45               ProtGenerics_1.26.0          
+ [91] Matrix_1.5-3                  vctrs_0.5.2                  
+ [93] pillar_1.8.1                  lifecycle_1.0.3              
+ [95] BiocManager_1.30.19           bitops_1.0-7                 
+ [97] irlba_2.3.5.1                 httpuv_1.6.8                 
+ [99] rtracklayer_1.54.0            R6_2.5.1                     
+[101] BiocIO_1.4.0                  affy_1.72.0                  
+[103] promises_1.2.0.1              MASS_7.3-58.2                
+[105] assertthat_0.2.1              rjson_0.2.21                 
+[107] withr_2.5.0                   GenomicAlignments_1.30.0     
+[109] Rsamtools_2.10.0              GenomeInfoDbData_1.2.7       
+[111] parallel_4.1.2                hms_1.1.2                    
+[113] grid_4.1.2                    coda_0.19-4                  
+[115] ashr_2.2-54                   mixsqp_0.3-48                
+[117] bbmle_1.0.25                  numDeriv_2016.8-1.1          
+[119] shiny_1.7.4                   restfulr_0.0.15              
+> 
+> 
